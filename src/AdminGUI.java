@@ -226,6 +226,52 @@ class AdminGUI extends JFrame {
         }
     }
 
+    public void loadDataFromDatabase() {
+        tableModel.setRowCount(0);
+        String query = "SELECT * FROM tugas";
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+            while (rs.next()) {
+                String imagePath = rs.getString("gambar");
+                ImageIcon imageIcon = null;
+                if (imagePath != null && !imagePath.isEmpty()) {
+                    File imgFile = new File(imagePath);
+                    if (imgFile.exists()) {
+                        imageIcon = new ImageIcon(new ImageIcon(imagePath).getImage().getScaledInstance(100, 100, Image.SCALE_SMOOTH));
+                    }
+                }
+
+                // Ambil tanggal posting dan deadline
+                String deadline = rs.getString("deadline");
+                String tanggalPosting = rs.getString("tanggal_posting");
+
+                // Hitung selisih hari
+                long selisihHari = 0;
+                if (deadline != null && tanggalPosting != null) {
+                    LocalDate deadlineDate = LocalDate.parse(deadline);
+                    LocalDate postingDate = LocalDate.parse(tanggalPosting);
+                    selisihHari = java.time.temporal.ChronoUnit.DAYS.between(postingDate, deadlineDate);
+                }
+
+                // Tambahkan data ke tabel
+                tableModel.addRow(new Object[] {
+                        rs.getInt("id"),
+                        rs.getString("judul"),
+                        rs.getString("deskripsi"),
+                        rs.getString("deadline"),
+                        rs.getString("tanggal_posting"),
+                        rs.getString("status"),
+                        imageIcon,
+                        selisihHari + " hari", // Tampilkan selisih hari
+                });
+            }
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Gagal memuat data dari database!", "Kesalahan", JOptionPane.ERROR_MESSAGE);
+            e.printStackTrace();
+        }
+    }
+
+
+
 
     private void tambahTugas() {
         JTextField judulField = new JTextField();
@@ -298,51 +344,132 @@ class AdminGUI extends JFrame {
     }
 
 
-    public void loadDataFromDatabase() {
-        tableModel.setRowCount(0);
-        String query = "SELECT * FROM tugas";
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
-            while (rs.next()) {
-                String imagePath = rs.getString("gambar");
-                ImageIcon imageIcon = null;
-                if (imagePath != null && !imagePath.isEmpty()) {
-                    File imgFile = new File(imagePath);
-                    if (imgFile.exists()) {
-                        imageIcon = new ImageIcon(new ImageIcon(imagePath).getImage().getScaledInstance(100, 100, Image.SCALE_SMOOTH));
-                    }
-                }
+    private void editTugas() {
+        int selectedRow = table.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(this, "Pilih tugas yang ingin diubah!", "Kesalahan", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
 
-                // Ambil tanggal posting dan deadline
-                String deadline = rs.getString("deadline");
-                String tanggalPosting = rs.getString("tanggal_posting");
+        // Ambil data dari tabel berdasarkan baris yang dipilih
+        int id = (int) tableModel.getValueAt(selectedRow, 0);
+        String judul = (String) tableModel.getValueAt(selectedRow, 1);
+        String deskripsi = (String) tableModel.getValueAt(selectedRow, 2);
+        String deadline = (String) tableModel.getValueAt(selectedRow, 3);
+        String gambarPath = ""; // Gambar mungkin null di tabel
 
-                // Hitung selisih hari
-                long selisihHari = 0;
-                if (deadline != null && tanggalPosting != null) {
-                    LocalDate deadlineDate = LocalDate.parse(deadline);
-                    LocalDate postingDate = LocalDate.parse(tanggalPosting);
-                    selisihHari = java.time.temporal.ChronoUnit.DAYS.between(postingDate, deadlineDate);
-                }
+        if (tableModel.getValueAt(selectedRow, 6) instanceof ImageIcon) {
+            gambarPath = ((ImageIcon) tableModel.getValueAt(selectedRow, 6)).getDescription();
+        }
 
-                // Tambahkan data ke tabel
-                tableModel.addRow(new Object[] {
-                        rs.getInt("id"),
-                        rs.getString("judul"),
-                        rs.getString("deskripsi"),
-                        rs.getString("deadline"),
-                        rs.getString("tanggal_posting"),
-                        rs.getString("status"),
-                        imageIcon,
-                        selisihHari + " hari", // Tampilkan selisih hari
-                });
+        // Komponen input untuk dialog edit
+        JTextField judulField = new JTextField(judul);
+        JTextField deskripsiField = new JTextField(deskripsi);
+
+        // Spinner untuk memilih deadline
+        JSpinner deadlineSpinner = new JSpinner(new SpinnerDateModel());
+        JSpinner.DateEditor dateEditor = new JSpinner.DateEditor(deadlineSpinner, "yyyy-MM-dd");
+        deadlineSpinner.setEditor(dateEditor);
+
+        // Atur nilai deadline pada spinner
+        try {
+            Date deadlineDate = new java.text.SimpleDateFormat("yyyy-MM-dd").parse(deadline);
+            deadlineSpinner.setValue(deadlineDate);
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Gagal memuat deadline!", "Kesalahan", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        // Tombol pilih gambar
+        JTextField gambarField = new JTextField(gambarPath);
+        JButton pilihGambarButton = new JButton("Pilih Gambar");
+        pilihGambarButton.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setFileFilter(new FileNameExtensionFilter("Image Files", "jpg", "png", "jpeg"));
+            if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                gambarField.setText(fileChooser.getSelectedFile().getAbsolutePath());
             }
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(this, "Gagal memuat data dari database!", "Kesalahan", JOptionPane.ERROR_MESSAGE);
-            e.printStackTrace();
+        });
+
+        // Susun dialog
+        Object[] fields = {
+                "Judul:", judulField,
+                "Deskripsi:", deskripsiField,
+                "Deadline (pilih tanggal):", deadlineSpinner,
+                "Gambar:", gambarField, pilihGambarButton
+        };
+
+        // Tampilkan dialog edit
+        int result = JOptionPane.showConfirmDialog(this, fields, "Edit Tugas", JOptionPane.OK_CANCEL_OPTION);
+        if (result == JOptionPane.OK_OPTION) {
+            // Ambil input dari dialog
+            String updatedJudul = judulField.getText();
+            String updatedDeskripsi = deskripsiField.getText();
+            Date updatedDeadlineDate = (Date) deadlineSpinner.getValue();
+            String updatedDeadline = new java.text.SimpleDateFormat("yyyy-MM-dd").format(updatedDeadlineDate);
+            String updatedGambar = gambarField.getText();
+
+            if (updatedJudul.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Judul tidak boleh kosong!", "Kesalahan", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            // Validasi format gambar
+            if (!updatedGambar.isEmpty() && !updatedGambar.matches(".*\\.(jpg|png|jpeg)$")) {
+                JOptionPane.showMessageDialog(this, "File gambar harus berupa format .jpg, .png, atau .jpeg!", "Kesalahan", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            // Update data di database
+            String updateSQL = "UPDATE tugas SET judul = ?, deskripsi = ?, deadline = ?, gambar = CASE WHEN ? != '' THEN ? ELSE gambar END WHERE id = ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(updateSQL)) {
+                pstmt.setString(1, updatedJudul);
+                pstmt.setString(2, updatedDeskripsi);
+                pstmt.setString(3, updatedDeadline);
+                pstmt.setString(4, updatedGambar);
+                pstmt.setString(5, updatedGambar);
+                pstmt.setInt(6, id);
+                pstmt.executeUpdate();
+
+                // Perbarui data di tabel GUI
+                tableModel.setValueAt(updatedJudul, selectedRow, 1);
+                tableModel.setValueAt(updatedDeskripsi, selectedRow, 2);
+                tableModel.setValueAt(updatedDeadline, selectedRow, 3);
+
+                if (!updatedGambar.isEmpty()) {
+                    ImageIcon newIcon = new ImageIcon(new ImageIcon(updatedGambar).getImage().getScaledInstance(100, 100, Image.SCALE_SMOOTH));
+                    newIcon.setDescription(updatedGambar);
+                    tableModel.setValueAt(newIcon, selectedRow, 6);
+                }
+
+                JOptionPane.showMessageDialog(this, "Tugas berhasil diubah!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Gagal mengubah tugas!", "Kesalahan", JOptionPane.ERROR_MESSAGE);
+                e.printStackTrace();
+            }
         }
     }
 
 
+    private void hapusTugas() {
+        int selectedRow = table.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(this, "Pilih tugas yang ingin dihapus!", "Kesalahan", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        int id = (int) tableModel.getValueAt(selectedRow, 0);
+        String deleteSQL = "DELETE FROM tugas WHERE id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(deleteSQL)) {
+            pstmt.setInt(1, id);
+            pstmt.executeUpdate();
+            loadDataFromDatabase();
+            JOptionPane.showMessageDialog(this, "Tugas berhasil dihapus!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Gagal menghapus tugas!", "Kesalahan", JOptionPane.ERROR_MESSAGE);
+            e.printStackTrace();
+        }
+    }
 
     private void logout() {
         int confirm = JOptionPane.showConfirmDialog(this, "Apakah Anda yakin ingin logout?",
