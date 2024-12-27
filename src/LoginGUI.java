@@ -59,9 +59,34 @@ public class LoginGUI extends JFrame {
         gradientPanel.add(formPanel);
         add(gradientPanel);
 
+        registerButton.addActionListener(e -> {
+            String username = JOptionPane.showInputDialog(this, "Masukkan Username:");
+            String password = JOptionPane.showInputDialog(this, "Masukkan Password:");
+//Penambahan data user register
+            if (DatabaseHandler.registerUser(username, password, "mahasiswa")) {
+                JOptionPane.showMessageDialog(this, "Registrasi berhasil!");
+            } else {
+                JOptionPane.showMessageDialog(this, "Registrasi gagal! Username sudah ada.");
+            }
+        });
 
+        loginButton.addActionListener(e -> {
+            String username = userField.getText();
+            String password = new String(passField.getPassword());
+            String role = DatabaseHandler.loginUser(username, password);
 
-
+            if (role == null) {
+                JOptionPane.showMessageDialog(this, "Username atau Password salah!");
+            } else if ("admin".equals(role)) {
+                JOptionPane.showMessageDialog(this, "Login sebagai Admin berhasil!");
+                new AdminGUI(true).setVisible(true);
+                dispose();
+            } else if ("mahasiswa".equals(role)) {
+                JOptionPane.showMessageDialog(this, "Login sebagai Mahasiswa berhasil!");
+                new AdminGUI(false).setVisible(true);
+                dispose();
+            }
+        });
     }
 
     public static void main(String[] args) {
